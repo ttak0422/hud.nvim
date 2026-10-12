@@ -5,17 +5,13 @@ Composable multiline HUDs for Neovim 0.10+.
 ## Setup
 
 ```lua
-local status = {
-  update = { "WinEnter", "WinLeave" },
-  provider = function(ctx) return ctx.focused and "Active" or "Inactive" end,
-}
-local cursor = require("hud.providers").cursor()
+local providers = require("hud.providers")
+
 require("hud").setup({
-  lines_update = { "WinEnter", "WinLeave" },
-  lines = function(ctx)
-    return ctx.focused and { status, cursor } or { status }
-  end,
-  position = { row = 0, col = 0 },
+  lines = {
+    providers.diagnostics(),
+    providers.cursor(),
+  },
 })
 ```
 
