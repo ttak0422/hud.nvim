@@ -1,0 +1,6 @@
+/doc/tags
+*.swp
+*.swo
+*~
+/result
+/nvim.log

@@ -1,0 +1,280 @@
+*hud.nvim*                    Small multiline window HUD
+
+Requires Neovim 0.10+. No dependencies.
+Licensed under the MIT License. Copyright (c) 2026 ttak0422. See LICENSE.
+
+SETUP                                                       *hud.setup()*
+    vim.opt.runtimepath:append("/absolute/path/to/hud.nvim")
+    require("hud").setup(opts)
+
+Defaults: >lua
+    local providers = require("hud.providers")
+    require("hud").setup({
+      lines = { providers.diagnostics(), providers.cursor() },
+      position = { row = 0, col = 0 },
+      zindex = 30,
+      hl = "HudNormal",
+      inactive_hl = "HudInactive",
+      avoid = { cursor = true, visual = true },
+    })
+<
+setup() replaces configuration, enables rendering, and clears temporary hiding.
+Omitted options use defaults; nested position/avoid fields merge with defaults.
+Invalid options raise an error before the working instance changes.
+
+Position is measured down from the content area's top and inward from its right
+edge, in cells. Both offsets must be nonnegative integers. Window winbars,
+statuslines, separators, and number/sign/fold gutters are respected. If the
+visible rows cannot fit, the HUD hides. A narrow pane fits each row to its
+usable width; see |hud-priority|.
+
+Each row is independently right aligned in one rectangular, nonfocusable float.
+Leading alignment spaces cover source text with the base highlight background.
+Outside the rectangle is untouched. The float overlays content and reserves no
+editing space. This is not a transparent or right-shaped overlay; themes can
+still define highlights without a background. Lower-zindex plugin previews can
+be covered. Change zindex to choose the layer; no other floats are modified.
+
+HudNormal defaults to NormalFloat; HudInactive defaults to Comment. Existing
+definitions are preserved. Define your own groups to choose the background.
+
+COMPONENTS                                                  *hud-components*
+lines is a dense ordered array, or function(ctx) returning such an array. The
+function runs in each source window's context; return nil or {} to hide that
+window's HUD. Components may be reused across returned arrays without mutation.
+Each array entry defines one row. Components are literal strings, provider
+functions, or tables containing:
+    provider    string or function(ctx)
+    condition   boolean or function(ctx)
+    hl          highlight group name or function(ctx)
+    update      optional array of events that invalidate this component
+    scope       "local" (default) or "global"; requires update
+    id          optional stable, nonempty string cache identity
+    priority    optional finite integer for width-pressure removal; default 0
+    [1], [2]... child components, concatenated in order after the provider
+
+Providers return strings, components, arrays of chunks, or nil. Nested children
+inherit their nearest hl. Highlight callbacks return a group name or nil to
+inherit. A false condition, or condition callback returning false/nil, skips
+the component and all its children. nil/empty provider output adds no text.
+Rows with no output are removed and later rows move up. This also applies when
+every child of a row is hidden. Use " " for an intentional blank row. Compaction
+precedes width clipping, so a visible row clipped to zero cells keeps its slot.
+All-empty output and lines={} hide the whole HUD. Native statusline formats are
+not expanded: "%l" is literal text. Nesting is limited to 32 levels.
+
+For example, change both content and row count with focus: >lua
+    local status = {
+      update = { "WinEnter", "WinLeave" },
+      provider = function(ctx) return ctx.focused and "Active" or "Inactive" end,
+      hl = function(ctx) return ctx.focused and "Title" or "Comment" end,
+    }
+    local cursor = require("hud.providers").cursor()
+    require("hud").setup({
+      lines_update = { "WinEnter", "WinLeave" },
+      lines = function(ctx)
+        return ctx.focused and { status, cursor } or { status }
+      end,
+    })
+<
+A fixed array with row-level conditions can also change its displayed height.
+Content dependencies are independent of the row count; see |hud-cache|.
+
+All callbacks, including filter, condition and highlight, run in their source
+window's context. ctx contains:
+    win, buf    source window and buffer IDs
+    focused     whether source was the current window at refresh
+    lnum        1-based buffer line
+    col         1-based virtual column, |virtcol()| of "."
+    byte_col    0-based byte offset
+    width       content width excluding gutters
+    height      content height excluding winbar and statusline
+
+The virtual column counts tabs and wide characters in cells, using the final
+cell of the character under the cursor. It is distinct from the byte offset.
+Callbacks should read state without mutating it and finish quickly. hud.nvim
+cannot undo callback side effects. Provider errors omit that output; siblings
+and other windows continue. Condition errors omit the component. Highlight
+errors inherit. Filter errors omit that window. An error or invalid return from
+lines(ctx) hides that window's HUD until a later refresh produces valid rows;
+other windows continue. Return a dense array, not a single component or string.
+Warnings are deduplicated per callback and role until the next setup.
+
+C0/DEL/C1 controls, including tabs and newlines, become spaces. Invalid UTF-8
+bytes become "?". Clipping keeps valid UTF-8 and Neovim-recognized combining
+characters with their base. Neovim's measured cell width is authoritative;
+terminal fonts and emoji grapheme shaping may render differently.
+
+WIDTH PRIORITY                                               *hud-priority*
+Set priority on a component to keep its output together when a row is too wide.
+Larger values survive longer; negative values are allowed. For example: >lua
+    lines = { {
+      { provider = "name", priority = 10 },
+      { " detail", priority = 0 },
+    } }
+<
+Each row removes whole units from lowest priority upward until it fits or one
+nonempty unit remains. Equal priorities remove later output first. The remaining
+unit uses normal prefix clipping if necessary. Output always keeps its original
+order. No separators are inserted: group a separator with the text it belongs to.
+Priority affects width only, not row count, height fitting or float zindex.
+
+An explicit priority groups a component's own output and unannotated descendants.
+A descendant with its own priority starts an independent unit with exactly that
+value, including components returned by a provider. Parent conditions and inherited
+highlights still apply. Unannotated direct row children are separate default-0
+units; an unannotated row container's own provider is another default-0 unit.
+Provider-returned chunks stay together unless they declare a priority. A function
+row groups its output the same way. Reusing a component creates separate display
+units without changing cache identity. Ties use each unit's first nonempty output.
+
+Rows opt into removal only when an explicit priority contributes nonempty output;
+otherwise they retain ordinary prefix clipping. Each row has its own cell budget
+after gutters and the right inset, before alignment padding. Resizing restores
+previously removed units from full output. Layout does not invalidate callbacks
+unless their update events include it. Removed units keep evaluating under their
+normal dependencies. Changing only priority does not invalidate cached callbacks.
+
+CACHING AND DEPENDENCIES                                     *hud-cache*
+Without update, user callbacks run on every rendering pass. This safe default
+does not guess their dependencies. filter is always evaluated. Add update to
+cache a component's own provider, condition and hl callback results: >lua
+    {
+      update = { "CursorMoved", "CursorMovedI", "TextChanged", "TextChangedI" },
+      provider = function(ctx) return tostring(ctx.lnum) end,
+      hl = function(ctx) return ctx.lnum % 2 == 0 and "Title" or "Comment" end,
+    }
+<
+Declare the union of events used by these callbacks. Children have independent
+dependencies: caching a parent never freezes its rendered subtree. To give
+callbacks different update rules, put them in separate nested components.
+Static fields are read on every pass. update={} caches successful results until
+their definition/binding changes or a forced invalidation. nil and false results
+are cached too. Thrown errors are not cached and retry on the next pass. Invalid
+return values require a listed event or refresh() to retry a cached callback.
+
+scope="local" routes dependencies by the event's source:
+    Window      CursorMoved, CursorMovedI, WinEnter, WinLeave, ModeChanged,
+                InsertEnter, InsertLeave, WinScrolled
+    Buffer      DiagnosticChanged, TextChanged, TextChangedI, TextChangedP,
+                BufModifiedSet, BufWritePost, FileType
+    Global      BufEnter, BufWinEnter, BufWinLeave, BufDelete, BufWipeout,
+                WinNew, WinClosed, WinResized, TabEnter, TabLeave, TabClosed,
+                VimResized, OptionSet, FocusGained, FocusLost, User, ColorScheme
+These are the supported event names; others are rejected. scope="global" makes
+every listed event invalidate all window instances, including cursor events.
+User listens to all User patterns. Dispatch |:doautocmd| User for external data,
+or call refresh(). Events are recorded before requests coalesce, preserving all
+affected windows/buffers. WinLeave and WinEnter affect the old/new focus windows.
+Always list both when reading ctx.focused. Dimension-dependent callbacks should
+include WinResized, VimResized and OptionSet. Geometry itself is always checked.
+
+Arbitrary callbacks are cached separately per source window and buffer binding;
+two windows showing the same buffer never share these results. Identity defaults
+to the component table. Reusing a table preserves its cache through reordering.
+A factory that creates fresh tables can opt into an id: >lua
+    local label = function(ctx) return ctx.focused and "Active" or "Idle" end
+    require("hud").setup({
+      lines = function()
+        return { { id = "status", update = { "WinEnter", "WinLeave" },
+                   provider = label } }
+      end,
+    })
+<
+Use unique ids within each window's component tree. Changing provider, condition,
+hl, scope or update invalidates that identity. A newly created closure is a new
+definition, even with the same id, so keep callback functions stable for reuse.
+Ids do not share results between windows. Ids and anonymous tables removed from
+the evaluated tree expire after that pass; children of false conditions expire.
+Off-tab, closed and excluded source windows release their cache. No implicit
+row-index identity is used. Do not mutate cached return values outside callbacks.
+
+For a lines(ctx) factory, lines_update and lines_scope use the same rules and
+cache its returned row structure per window, including nil. They require a
+function, not a fixed array. Without lines_update, the factory runs each pass.
+Components within the returned structure still update independently. A factory
+must list events affecting its structure; listing only focus events is sufficient
+for active/inactive row counts, even when a child changes on CursorMoved.
+
+refresh(), setup(), disable()/enable(), module reload and ColorScheme clear all
+evaluation caches. Buffer switches reset window caches. hide()/show() retain
+caches; matching events received while hidden invalidate them before redisplay.
+Reenabling after disable starts cold. Explicit refresh also handles data changed
+without an event. Declaring incomplete dependencies can leave content stale.
+
+PROVIDERS                                                   *hud-providers*
+    require("hud.providers").diagnostics()
+        Returns a provider showing nonzero E/W/I/H counts with DiagnosticError,
+        DiagnosticWarn, DiagnosticInfo and DiagnosticHint highlights. With no
+        diagnostics, returns "No diagnostics". Uses the source buffer. Caches
+        retrieval/aggregation per buffer and invalidates on DiagnosticChanged.
+        CursorMoved does not reread diagnostics. Two windows sharing a buffer
+        reuse this built-in result; arbitrary user callbacks do not.
+    require("hud.providers").cursor()
+        Returns a provider showing "Ln N Col M", with the virtual column above.
+        Caches per window; cursor/text/focus/mode/option events invalidate it.
+
+Both constructors return stable provider functions with built-in dependencies.
+Pass the function directly, or as provider without an explicit update override.
+An enclosing component's update replaces the built-in rule for its own provider;
+use a child provider if the enclosing condition/highlight needs another rule.
+Calling these functions manually inside another callback bypasses their cache.
+
+FILTER AND OVERLAP                                          *hud-visibility*
+The default filter includes empty-buftype buffers and excludes preview windows.
+Optional filter(ctx) replaces that policy: return true to include, false/nil to
+exclude. Floating windows and HUD buffers always remain excluded. To narrow the
+default policy, repeat its buftype and previewwindow checks in your filter.
+
+avoid.cursor=true hides the active HUD whenever the cursor's screen row is in
+any visible HUD row after compaction, regardless of horizontal position.
+Wrap, scroll and folds count. Height and cursor overlap are recalculated from
+the visible rows on each refresh, including changes between focused windows.
+avoid.visual=true hides it throughout Visual/Select modes, conservatively
+regardless of selection position. Inactive HUDs are unaffected by these rules.
+
+LIFECYCLE                                                   *hud-lifecycle*
+    require("hud").hide()       temporarily hide; scratch buffers may remain
+    require("hud").show()       unhide when overlap rules permit
+    require("hud").disable()    remove floats, buffers and autocmds
+    require("hud").enable()     enable saved configuration again
+    require("hud").refresh()    clear caches and schedule a refresh if enabled
+
+show() never enables a disabled instance. enable() preserves temporary hiding;
+show() clears it. setup() resets hiding. Reloading the module disables its old
+instance; call setup() again. An internal Lua registry invalidates stale queued
+work even when package.loaded is cleared.
+
+Only the current tab has HUD resources. Normal refreshes reuse buffers/floats
+and only change text, highlights or geometry when necessary. Closed, excluded
+and off-tab sources release their resources. External HUD closure/deletion
+recovers at the next scheduled refresh. Source-buffer switches reuse the HUD.
+
+Update requests coalesce. Each pass visits eligible windows, resolves their
+component trees using |hud-cache|, and compares output before writing to Neovim.
+Cached callbacks skip execution; normalization, traversal and layout still run.
+Row resolution precedes height and cursor-overlap checks, which depend on the
+rendered rows. Explicit hiding, Visual/Select avoidance and unusable panes skip
+row resolution. This reduces callback work; it is not a frame-time guarantee.
+
+Events cover cursor/insert movement, text/diagnostics, modes, focus, splits,
+resize, scroll, tabs, closures, colorschemes and option geometry. VimLeavePre
+releases resources. No timers, polling, processes, mappings, or user commands.
+Source text, options, statusline and winbar are unchanged. Call refresh() for
+custom provider data changes without an associated Neovim event.
+
+DEVELOPMENT                                                 *hud-development*
+From the repository root: >
+    make test
+    make format
+    make lint
+    make check
+<
+Tests use an isolated -n --headless -u NONE -i NONE Neovim, without a framework.
+Override NVIM, STYLUA and LUACHECK paths as needed; shell.nix provides tools.
+Example: >
+    nvim -n -u NONE -i NONE -c 'luafile examples/diagnostics.lua'
+<
+See README.md for a minimal setup example.
+
+vim:tw=78:ts=8:ft=help:norl:
