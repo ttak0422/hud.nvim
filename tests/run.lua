@@ -388,7 +388,7 @@ local function run()
         provider = "second",
       },
     }
-    hud.setup({ lines = lines })
+    hud.setup({ lines = lines, avoid = { cursor = true } })
     api.nvim_win_set_cursor(0, { 2, 0 })
     vim.fn.winrestview({ topline = 1 })
     hud.refresh()
@@ -528,9 +528,120 @@ local function run()
     equal(floats()[source], nil, "insufficient content height hides HUD")
   end)
 
+  test("defaults stay visible over the cursor and in Visual modes without cache or redraw churn", function()
+    local first = api.nvim_get_current_win()
+    vim.cmd("vsplit")
+    local second = api.nvim_get_current_win()
+    api.nvim_win_call(first, function()
+      api.nvim_win_set_cursor(first, { 1, 0 })
+      vim.fn.winrestview({ topline = 1 })
+    end)
+    local calls, factories = 0, 0
+    local status = {
+      update = {},
+      provider = function()
+        calls = calls + 1
+        return "status"
+      end,
+    }
+    local active, inactive = { status, "detail" }, { status }
+    hud.setup({
+      lines_update = { "WinEnter", "WinLeave" },
+      lines = function(ctx)
+        factories = factories + 1
+        return ctx.focused and active or inactive
+      end,
+    })
+    settle()
+    local initial = floats()
+    local ticks = {
+      [first] = api.nvim_buf_get_changedtick(initial[first].buf),
+      [second] = api.nvim_buf_get_changedtick(initial[second].buf),
+    }
+    local before_calls, before_factories = calls, factories
+    for row = 1, 3 do
+      api.nvim_win_set_cursor(second, { row, 0 })
+      vim.fn.winrestview({ topline = 1, lnum = row, col = 0 })
+      api.nvim_exec_autocmds("CursorMoved", {})
+      settle()
+      equal(vim.fn.winline(), row)
+      equal(content(second), { "status", "detail" })
+      equal(content(first), { "status" })
+    end
+    for _, mode in ipairs({ { "v", "v" }, { "V", "V" }, { "\22", "\22" }, { "gh", "s" } }) do
+      api.nvim_win_set_cursor(second, { 1, 0 })
+      vim.cmd("normal! " .. mode[1])
+      equal(api.nvim_get_mode().mode, mode[2])
+      api.nvim_exec_autocmds("ModeChanged", {})
+      settle()
+      equal(content(second), { "status", "detail" })
+      api.nvim_win_set_cursor(second, { 2, 0 })
+      api.nvim_exec_autocmds("CursorMoved", {})
+      settle()
+      equal(content(second), { "status", "detail" })
+      equal(content(first), { "status" })
+      vim.cmd("normal! \27")
+      api.nvim_exec_autocmds("ModeChanged", {})
+      settle()
+    end
+    equal(calls, before_calls, "visibility transitions must retain component caches")
+    equal(factories, before_factories, "visibility transitions must retain line caches")
+    equal(floats(), initial, "visibility transitions must reuse floats and buffers")
+    for _, win in ipairs({ first, second }) do
+      equal(api.nvim_buf_get_changedtick(initial[win].buf), ticks[win], "unchanged HUD text was rewritten")
+    end
+    api.nvim_set_current_win(first)
+    settle()
+    equal(content(first), { "status", "detail" })
+    equal(content(second), { "status" })
+    equal(calls, before_calls, "focus changes must retain independent stable components")
+    equal(floats(), initial)
+  end)
+
+  test("explicit avoidance flags opt into cursor and Visual hiding independently", function()
+    local first = api.nvim_get_current_win()
+    vim.cmd("vsplit")
+    local source = api.nvim_get_current_win()
+    api.nvim_win_call(first, function()
+      api.nvim_win_set_cursor(first, { 1, 0 })
+      vim.fn.winrestview({ topline = 1 })
+    end)
+    for _, policy in ipairs({
+      { avoid = {}, cursor = false, visual = false },
+      { avoid = { cursor = false, visual = false }, cursor = false, visual = false },
+      { avoid = { cursor = true }, cursor = true, visual = false },
+      { avoid = { visual = true }, cursor = false, visual = true },
+      { avoid = { cursor = true, visual = true }, cursor = true, visual = true },
+    }) do
+      hud.setup({ lines = { "top", "second" }, avoid = policy.avoid })
+      api.nvim_win_set_cursor(source, { 1, 0 })
+      vim.fn.winrestview({ topline = 1 })
+      api.nvim_exec_autocmds("CursorMoved", {})
+      settle()
+      equal(floats()[source] == nil, policy.cursor, "cursor override")
+      equal(content(first), { "   top", "second" }, "inactive window must remain visible")
+      api.nvim_win_set_cursor(source, { 5, 0 })
+      api.nvim_exec_autocmds("CursorMoved", {})
+      settle()
+      assert(floats()[source], "leaving HUD rows must restore visibility")
+      for _, mode in ipairs({ "v", "V", "\22" }) do
+        vim.cmd("normal! " .. mode)
+        equal(api.nvim_get_mode().mode, mode)
+        api.nvim_exec_autocmds("ModeChanged", {})
+        settle()
+        equal(floats()[source] == nil, policy.visual, "Visual override")
+        equal(content(first), { "   top", "second" }, "inactive Visual visibility")
+        vim.cmd("normal! \27")
+        api.nvim_exec_autocmds("ModeChanged", {})
+        settle()
+        assert(floats()[source], "leaving Visual mode must restore visibility")
+      end
+    end
+  end)
+
   test("cursor second-row, wrap, scroll and visual overlap", function()
     local source = api.nvim_get_current_win()
-    hud.setup({ lines = { "top", "second" } })
+    hud.setup({ lines = { "top", "second" }, avoid = { cursor = true, visual = true } })
     api.nvim_win_set_cursor(source, { 1, 0 })
     vim.cmd("normal! zt")
     hud.refresh()
@@ -575,7 +686,7 @@ local function run()
     api.nvim_win_set_cursor(source, { 5, 0 })
     vim.fn.winrestview({ topline = 1 })
     equal(vim.fn.winline(), 2)
-    hud.setup({ lines = { "first", "second" } })
+    hud.setup({ lines = { "first", "second" }, avoid = { cursor = true, visual = true } })
     settle()
     equal(floats()[source], nil, "folded first four lines put line five in second HUD row")
     api.nvim_win_set_cursor(source, { 6, 0 })

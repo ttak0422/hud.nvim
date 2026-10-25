@@ -26,7 +26,7 @@ local function defaults()
     zindex = 30,
     hl = "HudNormal",
     inactive_hl = "HudInactive",
-    avoid = { cursor = true, visual = true },
+    avoid = { cursor = false, visual = false },
   }
 end
 
