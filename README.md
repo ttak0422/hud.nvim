@@ -2,6 +2,8 @@
 
 Composable multiline HUDs for Neovim 0.10+.
 
+<img width="927" height="498" alt="Image" src="https://github.com/user-attachments/assets/51b7f868-4e6d-4110-8c7c-0416a73b767a" />
+
 ## Setup
 
 ```lua
