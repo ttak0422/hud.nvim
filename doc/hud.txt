@@ -15,7 +15,7 @@ Defaults: >lua
       zindex = 30,
       hl = "HudNormal",
       inactive_hl = "HudInactive",
-      avoid = { cursor = true, visual = true },
+      avoid = { cursor = false, visual = false },
     })
 <
 setup() replaces configuration, enables rendering, and clears temporary hiding.
@@ -225,6 +225,9 @@ The default filter includes empty-buftype buffers and excludes preview windows.
 Optional filter(ctx) replaces that policy: return true to include, false/nil to
 exclude. Floating windows and HUD buffers always remain excluded. To narrow the
 default policy, repeat its buftype and previewwindow checks in your filter.
+
+Both avoidance options default to false, keeping the HUD visible during cursor
+overlap and Visual/Select modes. Opt into automatic hiding with either option:
 
 avoid.cursor=true hides the active HUD whenever the cursor's screen row is in
 any visible HUD row after compaction, regardless of horizontal position.

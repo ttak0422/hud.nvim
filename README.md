@@ -32,8 +32,8 @@ Add `priority` to keep important components when a row is too wide: for example,
 Lower priorities disappear first; rows without priorities keep prefix clipping.
 
 `position` sets the top and right insets in cells. Rows are right-aligned in a
-rectangular float over buffer text. By default, cursor overlap and Visual/Select
-mode hide the active window's HUD.
+rectangular float over buffer text. HUDs stay visible during cursor overlap and
+Visual/Select mode. Set `avoid.cursor` or `avoid.visual` to `true` to opt into hiding.
 
 ## API
 
