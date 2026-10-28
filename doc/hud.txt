@@ -29,9 +29,6 @@ visible rows cannot fit, the HUD hides. A narrow pane fits each row to its
 usable width; see |hud-priority|.
 
 Each row is independently right aligned in one rectangular, nonfocusable float.
-One leading space is reserved on every displayed row, including the longest.
-This cell counts toward the usable width before priority selection and clipping.
-If only one usable cell remains, visible rows contain only that space.
 Leading alignment spaces cover source text with the base highlight background.
 Outside the rectangle is untouched. The float overlays content and reserves no
 editing space. This is not a transparent or right-shaped overlay; themes can
@@ -133,11 +130,10 @@ units without changing cache identity. Ties use each unit's first nonempty outpu
 
 Rows opt into removal only when an explicit priority contributes nonempty output;
 otherwise they retain ordinary prefix clipping. Each row has its own cell budget
-after gutters, the right inset and the leading cell, before alignment padding.
-Resizing restores previously removed units from full output. Layout does not
-invalidate callbacks unless their update events include it. Removed units keep
-evaluating under their normal dependencies. Changing only priority does not
-invalidate cached callbacks.
+after gutters and the right inset, before alignment padding. Resizing restores
+previously removed units from full output. Layout does not invalidate callbacks
+unless their update events include it. Removed units keep evaluating under their
+normal dependencies. Changing only priority does not invalidate cached callbacks.
 
 CACHING AND DEPENDENCIES                                     *hud-cache*
 Without update, user callbacks run on every rendering pass. This safe default
