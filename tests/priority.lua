@@ -120,7 +120,7 @@ return function(t)
       local ok, message = pcall(hud.setup, { lines = { { provider = "invalid", priority = priority } } })
       equal(ok, false)
       assert(message:find("priority: expected a finite integer", 1, true), message)
-      equal(content(), { " working" })
+      equal(content(), { "working" })
       local warnings = {}
       local chunks = components.render({
         "safe",
@@ -164,7 +164,7 @@ return function(t)
     local wide = api.nvim_get_current_win()
     vim.cmd("vsplit")
     local narrow = api.nvim_get_current_win()
-    api.nvim_win_set_width(narrow, 5)
+    api.nvim_win_set_width(narrow, 4)
     hud.setup({
       avoid = { cursor = false },
       lines = function(ctx)
@@ -174,20 +174,20 @@ return function(t)
     })
     settle()
     equal(api.nvim_win_get_buf(wide), api.nvim_win_get_buf(narrow))
-    equal(content(wide), { " AAABBC", "    ZZD" })
-    equal(content(narrow), { " AAAC", "  ZZD" })
+    equal(content(wide), { "AAABBC", "   ZZD" })
+    equal(content(narrow), { "AAAC", " ZZD" })
     local marks =
       api.nvim_buf_get_extmarks(floats()[narrow].buf, api.nvim_create_namespace("hud.nvim"), 0, -1, { details = true })
     local actual = {}
     for _, mark in ipairs(marks) do
       actual[#actual + 1] = { mark[2], mark[3], mark[4].end_col, mark[4].hl_group }
     end
-    equal(actual, { { 0, 1, 4, "Title" }, { 0, 4, 5, "Comment" }, { 1, 2, 4, "Title" }, { 1, 4, 5, "String" } })
-    resize(narrow, 3)
-    equal(content(narrow), { " AA", "  D" })
-    equal(content(wide), { " AAABBC", "    ZZD" })
-    resize(narrow, 7)
-    equal(content(narrow), { " AAABBC", "    ZZD" })
+    equal(actual, { { 0, 0, 3, "Title" }, { 0, 3, 4, "Comment" }, { 1, 1, 3, "Title" }, { 1, 3, 4, "String" } })
+    resize(narrow, 2)
+    equal(content(narrow), { "AA", " D" })
+    equal(content(wide), { "AAABBC", "   ZZD" })
+    resize(narrow, 6)
+    equal(content(narrow), { "AAABBC", "   ZZD" })
   end)
 
   test("gutters, right inset, global resize and tiny priority rows respect usable geometry", function()
@@ -198,20 +198,20 @@ return function(t)
     hud.setup({ avoid = { cursor = false }, position = { col = inset }, lines = { row() } })
     settle()
     local gutter = vim.fn.getwininfo(source)[1].textoff
-    vim.o.columns = gutter + inset + 5
+    vim.o.columns = gutter + inset + 4
     event("VimResized")
     local info = vim.fn.getwininfo(source)[1]
     local budget = info.width - info.textoff - inset
-    equal(budget, 5)
-    equal(content(source), { " AAAC" })
-    equal(api.nvim_win_get_config(floats()[source].win).col, info.wincol - 1 + info.width - inset - 5)
+    equal(budget, 4)
+    equal(content(source), { "AAAC" })
+    equal(api.nvim_win_get_config(floats()[source].win).col, info.wincol - 1 + info.width - inset - 4)
     vim.o.columns = 100
     event("VimResized")
-    equal(content(source), { " AAABBC" })
+    equal(content(source), { "AAABBC" })
     vim.wo.number, vim.wo.signcolumn, vim.wo.foldcolumn = false, "no", "0"
     vim.cmd("vsplit")
     source = api.nvim_get_current_win()
-    api.nvim_win_set_width(source, 2)
+    api.nvim_win_set_width(source, 1)
     hud.setup({
       avoid = { cursor = false },
       filter = function(ctx)
@@ -220,7 +220,7 @@ return function(t)
       lines = { { { priority = 1, provider = "日" }, "x" }, { priority = 0, provider = "a" } },
     })
     settle()
-    equal(content(source), { "  ", " a" }, "a zero-cell clipped row keeps its visible slot")
+    equal(content(source), { " ", "a" }, "a zero-cell clipped row keeps its visible slot")
     hud.setup({
       avoid = { cursor = false },
       filter = function(ctx)
@@ -229,16 +229,16 @@ return function(t)
       lines = { { { priority = 1, provider = "日" }, "x" } },
     })
     settle()
-    equal(content(source), { " " }, "clipped content still reserves its leading cell")
-    resize(source, 3)
-    equal(content(source), { " 日" })
+    equal(floats(), {}, "an entirely zero-cell HUD stays hidden")
+    resize(source, 2)
+    equal(content(source), { "日" })
   end)
 
   test("dynamic prioritized rows compact normally and invalid factories recover per window", function()
     local other = api.nvim_get_current_win()
     vim.cmd("vsplit")
     local source = api.nvim_get_current_win()
-    api.nvim_win_set_width(source, 5)
+    api.nvim_win_set_width(source, 4)
     local visible, bad = true, false
     hud.setup({
       avoid = { cursor = false },
@@ -261,17 +261,17 @@ return function(t)
       end,
     })
     settle()
-    equal(content(source), { " AAAC", "    H" })
+    equal(content(source), { "AAAC", "   H" })
     visible = false
     event("User")
-    equal(content(source), { " AAAC" })
+    equal(content(source), { "AAAC" })
     bad = true
     event("User")
     equal(floats()[source], nil)
-    equal(content(other), { " safe" })
+    equal(content(other), { "safe" })
     bad, visible = false, true
     event("User")
-    equal(content(source), { " AAAC", "    H" })
+    equal(content(source), { "AAAC", "   H" })
     vim.cmd("split")
     source = api.nvim_get_current_win()
     api.nvim_win_set_height(source, 1)
@@ -318,26 +318,26 @@ return function(t)
     settle()
     equal(gets, 1, "built-in diagnostics share retrieval for two source windows")
     equal(calls, { [wide] = 1, [source] = 1 })
-    equal(content(source), { " KEEPE:1 W:1!" })
+    equal(content(source), { "KEEPE:1 W:1!" })
     local initial_uncached = uncached
     for _ = 1, 3 do
-      resize(source, 5)
-      equal(content(source), { " KEEP" })
+      resize(source, 4)
+      equal(content(source), { "KEEP" })
       resize(source, 20)
-      equal(content(source), { " KEEPE:1 W:1!" })
+      equal(content(source), { "KEEPE:1 W:1!" })
     end
     equal(gets, 1, "six resize events add no diagnostic retrieval")
     equal(calls, { [wide] = 1, [source] = 1 }, "layout does not invalidate declared callback dependencies")
     assert(uncached > initial_uncached, "uncached callbacks retain safe reevaluation")
-    resize(source, 5)
+    resize(source, 4)
     data = { { severity = 2 }, { severity = 2 }, { severity = 3 } }
     api.nvim_exec_autocmds("DiagnosticChanged", { buffer = buf })
     settle()
     equal(gets, 2, "a dropped diagnostic unit still updates once per buffer")
-    equal(content(source), { " KEEP" })
-    equal(content(wide), { " KEEPW:2 I:1!" })
+    equal(content(source), { "KEEP" })
+    equal(content(wide), { "KEEPW:2 I:1!" })
     resize(source, 20)
-    equal(content(source), { " KEEPW:2 I:1!" })
+    equal(content(source), { "KEEPW:2 I:1!" })
     equal(gets, 2, "expansion restores the new diagnostic result without retrieval")
     equal(calls, { [wide] = 1, [source] = 1 })
     equal(returned, { "K", { provider = "EEP", hl = "Title" } }, "cached return tables remain untouched")
@@ -347,7 +347,7 @@ return function(t)
   test("priority-only definition changes preserve callbacks and resize dependencies remain explicit", function()
     vim.cmd("vsplit")
     local source = api.nvim_get_current_win()
-    api.nvim_win_set_width(source, 4)
+    api.nvim_win_set_width(source, 3)
     local priority, calls, dimensions, factories = 10, 0, 0, 0
     local provider = function()
       calls = calls + 1
@@ -379,21 +379,21 @@ return function(t)
       end,
     })
     settle()
-    equal(content(source), { " AAA", "   4" })
+    equal(content(source), { "AAA", "  3" })
     equal(calls, 1)
     local initial_dimensions = dimensions
     priority = 0
     event("User")
-    equal(content(source), { " BB", "  4" })
+    equal(content(source), { "BB", " 3" })
     equal(calls, 1, "priority changes do not invalidate a stable callback definition")
     priority = 10
     event("User")
-    equal(content(source), { " AAA", "   4" })
+    equal(content(source), { "AAA", "  3" })
     equal(calls, 1)
     equal(dimensions, initial_dimensions, "User does not invalidate resize-only dependencies")
     local before_dimensions, before_factories = dimensions, factories
-    resize(source, 7)
-    equal(content(source), { " AAABB", "     7" })
+    resize(source, 6)
+    equal(content(source), { "AAABB", "    6" })
     equal(calls, 1)
     assert(dimensions > before_dimensions and factories > before_factories)
   end)

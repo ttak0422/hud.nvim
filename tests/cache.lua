@@ -147,10 +147,10 @@ return function(t)
     equal(factories, hidden_calls, "nil line results are cached too")
     visible = true
     event("User")
-    equal(content(wins[1]), { " Active", " detail" })
+    equal(content(wins[1]), { "Active", "detail" })
     api.nvim_win_set_width(wins[1], 12)
     event("WinResized")
-    equal(content(wins[1]), { " Active" })
+    equal(content(wins[1]), { "Active" })
   end)
 
   test("fresh tables use explicit identity; reordered or replaced definitions stay correct", function()
@@ -190,7 +190,7 @@ return function(t)
     value, reverse = "two", true
     event("CursorMoved")
     equal({ stable_calls, fresh_calls, closure_calls }, { 1, 2, 2 })
-    equal(content(), { "    two", "  fresh", " stable" })
+    equal(content(), { "   two", " fresh", "stable" })
     include = false
     event("CursorMoved")
     include = true
@@ -202,7 +202,7 @@ return function(t)
     end
     event("CursorMoved")
     equal(stable_calls, 3, "changed function identity invalidates a stable id")
-    equal(content()[3], " replacement")
+    equal(content()[3], "replacement")
     hud.refresh()
     settle()
     equal(stable_calls, 4, "manual refresh forces callbacks despite their update lists")
@@ -242,7 +242,7 @@ return function(t)
     api.nvim_win_set_cursor(0, { 20, 0 })
     event("CursorMoved")
     equal({ parent_calls, conditions, highlights, child_calls }, { 1, 1, 1, 2 })
-    equal(content(), { " line 20" })
+    equal(content(), { "line 20" })
     color = "Comment"
     event("User")
     equal({ parent_calls, conditions, highlights, child_calls }, { 2, 2, 2, 2 })
@@ -285,7 +285,7 @@ return function(t)
     for i, win in ipairs(wins) do
       equal(calls[win] - before[win], i == 3 and 0 or 1)
       if i ~= 3 then
-        equal(content(win), { " " .. win .. ":edited" })
+        equal(content(win), { win .. ":edited" })
       end
     end
     before = vim.deepcopy(calls)
@@ -383,8 +383,8 @@ return function(t)
       equal(calls[win] - before[win], index == 3 and 0 or 1)
       equal(factories[win] - before_f[win], 1, "global factory invalidates once per coalesced pass")
     end
-    equal(content(wins[1]), { " 31", " D1" })
-    equal(content(wins[2]), { " 32", " D1" })
+    equal(content(wins[1]), { "31", "D1" })
+    equal(content(wins[2]), { "32", "D1" })
     api.nvim_exec_autocmds("DiagnosticChanged", { buffer = bufs[1] })
     api.nvim_exec_autocmds("DiagnosticChanged", { buffer = bufs[3] })
     settle()
@@ -407,7 +407,7 @@ return function(t)
       equal(calls[win] - before[win], index == 3 and 1 or 0)
       equal(reads[win], index == 3 and 2 or 3)
     end
-    equal(content(wins[3]), { " 40", " D2" })
+    equal(content(wins[3]), { "40", "D2" })
   end)
 
   test("binding changes, setup and disable/enable invalidate cached callbacks", function()
@@ -436,7 +436,7 @@ return function(t)
     local new_buf = api.nvim_create_buf(true, false)
     api.nvim_win_set_buf(source, new_buf)
     settle()
-    equal(content(), { " " .. source .. ":" .. new_buf })
+    equal(content(), { source .. ":" .. new_buf })
     equal({ calls, factories }, { 2, 2 })
     api.nvim_buf_delete(old_buf, { force = true })
     settle()
@@ -451,7 +451,7 @@ return function(t)
     vim.cmd("vsplit")
     settle()
     local second = api.nvim_get_current_win()
-    equal(content(second), { " " .. second .. ":" .. new_buf })
+    equal(content(second), { second .. ":" .. new_buf })
     equal({ calls, factories }, { 5, 5 })
     vim.cmd("close")
     settle()
@@ -485,7 +485,7 @@ return function(t)
     failing = false
     event("CursorMoved")
     equal(calls, 2)
-    equal(content(), { "      safe", " recovered" })
+    equal(content(), { "     safe", "recovered" })
     for _, bad in ipairs({
       { lines = { { update = "CursorMoved", provider = "x" } } },
       { lines = { { update = { "NotAnEvent" }, provider = "x" } } },
@@ -496,7 +496,7 @@ return function(t)
       { lines = { "x" }, lines_update = {} },
     }) do
       equal(pcall(hud.setup, bad), false)
-      equal(content(), { "      safe", " recovered" })
+      equal(content(), { "     safe", "recovered" })
     end
   end)
 

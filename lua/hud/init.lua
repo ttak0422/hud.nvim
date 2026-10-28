@@ -278,9 +278,8 @@ local function render(source, focused, mode)
       -- Compact absent rows before layout, never mutate the configured nodes.
       -- A row clipped to zero cells still occupies its original visible slot.
       if #chunks > 0 then
-        -- Reserve one leading cell before fitting and right-aligning every row.
-        local line = components.fit(chunks, limit - 1)
-        rows[#rows + 1], width = line, math.max(width, line.width + 1)
+        local line = components.fit(chunks, limit)
+        rows[#rows + 1], width = line, math.max(width, line.width)
       end
     end
     evaluator:finish(ctx)
