@@ -388,7 +388,7 @@ local function run()
         provider = "second",
       },
     }
-    hud.setup({ lines = lines, avoid = { cursor = true } })
+    hud.setup({ lines = lines, position = { col = api.nvim_win_get_width(0) - 5 }, avoid = { cursor = true } })
     api.nvim_win_set_cursor(0, { 2, 0 })
     vim.fn.winrestview({ topline = 1 })
     hud.refresh()
@@ -528,7 +528,7 @@ local function run()
     equal(floats()[source], nil, "insufficient content height hides HUD")
   end)
 
-  test("defaults stay visible over the cursor and in Visual modes without cache or redraw churn", function()
+  test("defaults stay visible beside the cursor and in Visual modes without cache or redraw churn", function()
     local first = api.nvim_get_current_win()
     vim.cmd("vsplit")
     local second = api.nvim_get_current_win()
@@ -598,7 +598,7 @@ local function run()
     equal(floats(), initial)
   end)
 
-  test("explicit avoidance flags opt into cursor and Visual hiding independently", function()
+  test("avoidance flags control cursor and Visual hiding independently", function()
     local first = api.nvim_get_current_win()
     vim.cmd("vsplit")
     local source = api.nvim_get_current_win()
@@ -606,15 +606,16 @@ local function run()
       api.nvim_win_set_cursor(first, { 1, 0 })
       vim.fn.winrestview({ topline = 1 })
     end)
+    api.nvim_buf_set_lines(0, 0, 1, false, { string.rep("x", 100) })
     for _, policy in ipairs({
-      { avoid = {}, cursor = false, visual = false },
+      { avoid = {}, cursor = true, visual = false },
       { avoid = { cursor = false, visual = false }, cursor = false, visual = false },
       { avoid = { cursor = true }, cursor = true, visual = false },
-      { avoid = { visual = true }, cursor = false, visual = true },
+      { avoid = { visual = true }, cursor = true, visual = true },
       { avoid = { cursor = true, visual = true }, cursor = true, visual = true },
     }) do
       hud.setup({ lines = { "top", "second" }, avoid = policy.avoid })
-      api.nvim_win_set_cursor(source, { 1, 0 })
+      api.nvim_win_set_cursor(source, { 1, api.nvim_win_get_width(source) - 1 })
       vim.fn.winrestview({ topline = 1 })
       api.nvim_exec_autocmds("CursorMoved", {})
       settle()
@@ -641,7 +642,11 @@ local function run()
 
   test("cursor second-row, wrap, scroll and visual overlap", function()
     local source = api.nvim_get_current_win()
-    hud.setup({ lines = { "top", "second" }, avoid = { cursor = true, visual = true } })
+    hud.setup({
+      lines = { "top", "second" },
+      position = { col = api.nvim_win_get_width(source) - 6 },
+      avoid = { cursor = true, visual = true },
+    })
     api.nvim_win_set_cursor(source, { 1, 0 })
     vim.cmd("normal! zt")
     hud.refresh()
@@ -686,7 +691,11 @@ local function run()
     api.nvim_win_set_cursor(source, { 5, 0 })
     vim.fn.winrestview({ topline = 1 })
     equal(vim.fn.winline(), 2)
-    hud.setup({ lines = { "first", "second" }, avoid = { cursor = true, visual = true } })
+    hud.setup({
+      lines = { "first", "second" },
+      position = { col = api.nvim_win_get_width(source) - 6 },
+      avoid = { cursor = true, visual = true },
+    })
     settle()
     equal(floats()[source], nil, "folded first four lines put line five in second HUD row")
     api.nvim_win_set_cursor(source, { 6, 0 })
@@ -911,6 +920,7 @@ local function run()
     equal(floats(), {})
   end)
 
+  dofile("tests/overlap.lua")({ test = test, equal = equal, settle = settle, floats = floats })
   dofile("tests/cache.lua")({ test = test, equal = equal, settle = settle, content = content, floats = floats })
   dofile("tests/priority.lua")({ test = test, equal = equal, settle = settle, content = content, floats = floats })
 
