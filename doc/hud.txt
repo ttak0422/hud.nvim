@@ -15,7 +15,7 @@ Defaults: >lua
       zindex = 30,
       hl = "HudNormal",
       inactive_hl = "HudInactive",
-      avoid = { cursor = false, visual = false },
+      avoid = { cursor = true, visual = false },
     })
 <
 setup() replaces configuration, enables rendering, and clears temporary hiding.
@@ -226,13 +226,17 @@ Optional filter(ctx) replaces that policy: return true to include, false/nil to
 exclude. Floating windows and HUD buffers always remain excluded. To narrow the
 default policy, repeat its buftype and previewwindow checks in your filter.
 
-Both avoidance options default to false, keeping the HUD visible during cursor
-overlap and Visual/Select modes. Opt into automatic hiding with either option:
+avoid.cursor defaults to true. The active HUD hides when any display cell of
+its cursor overlaps the rendered float rectangle, including padding on shorter
+rows. Wide characters hide it even when only their trailing cell overlaps.
+Moving clear of the rectangle restores it; sharing a row alone does not hide it.
+Set avoid.cursor=false to keep the HUD visible even during overlap.
+Wrap, horizontal/vertical scroll, folds, gutters, winbars and window offsets
+count. Geometry is recalculated on each refresh, including row/content changes,
+focus changes and resizing. Cursor checks do not invalidate provider caches.
 
-avoid.cursor=true hides the active HUD whenever the cursor's screen row is in
-any visible HUD row after compaction, regardless of horizontal position.
-Wrap, scroll and folds count. Height and cursor overlap are recalculated from
-the visible rows on each refresh, including changes between focused windows.
+avoid.visual defaults to false, keeping Visual/Select mode visible unless the
+cursor itself overlaps (when avoid.cursor=true).
 avoid.visual=true hides it throughout Visual/Select modes, conservatively
 regardless of selection position. Inactive HUDs are unaffected by these rules.
 

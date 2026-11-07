@@ -26,7 +26,7 @@ local function defaults()
     zindex = 30,
     hl = "HudNormal",
     inactive_hl = "HudInactive",
-    avoid = { cursor = false, visual = false },
+    avoid = { cursor = true, visual = false },
   }
 end
 
@@ -154,7 +154,45 @@ local function scratch(entry, source)
   end
 end
 
-local function paint(source, rows, width, info, base)
+local function geometry_for(rows, width, info, source)
+  local right = info.width - (vim.wo[source].rightleft and info.textoff or 0)
+  return {
+    relative = "editor",
+    row = info.winrow - 1 + (info.winbar or 0) + config.position.row,
+    col = info.wincol - 1 + right - config.position.col - width,
+    width = width,
+    height = #rows,
+    focusable = false,
+    style = "minimal",
+    border = "none",
+    zindex = config.zindex,
+  }
+end
+
+local function cursor_overlaps(source, cursor, info, geometry)
+  -- winline/wincol follow wrapping, folds, conceal and virtual editing. Unlike
+  -- screenpos alone, they also locate the cursor beyond the end of a line.
+  local row = info.winrow - 2 + (info.winbar or 0) + vim.fn.winline()
+  local col = info.wincol - 2 + vim.fn.wincol()
+  if row < geometry.row or row >= geometry.row + geometry.height then
+    return false
+  end
+  local last = col
+  local pos = vim.fn.screenpos(source, cursor[1], cursor[2] + 1)
+  -- Include the trailing cell of a wide character, but not the entire tab.
+  -- Do not use a buffer character's position when the cursor is in virtual space.
+  if pos.row == row + 1 and pos.curscol == col + 1 then
+    last = math.max(last, pos.endcol - 1)
+  end
+  if vim.wo[source].rightleft then
+    -- wincol() and screenpos() count from the text's logical left even in RTL.
+    local edge = 2 * (info.wincol - 1) + info.width - 1
+    col, last = edge - last, edge - col
+  end
+  return col < geometry.col + geometry.width and last >= geometry.col
+end
+
+local function paint(source, rows, width, geometry, base)
   local entry = entries[source] or {}
   entries[source] = entry
   scratch(entry, source)
@@ -180,18 +218,6 @@ local function paint(source, rows, width, info, base)
     end
     entry.marks = marks
   end
-  local right = info.width - (vim.wo[source].rightleft and info.textoff or 0)
-  local geometry = {
-    relative = "editor",
-    row = info.winrow - 1 + (info.winbar or 0) + config.position.row,
-    col = info.wincol - 1 + right - config.position.col - width,
-    width = width,
-    height = #rows,
-    focusable = false,
-    style = "minimal",
-    border = "none",
-    zindex = config.zindex,
-  }
   if not entry.win or not api.nvim_win_is_valid(entry.win) then
     entry.win = api.nvim_open_win(entry.buf, false, vim.tbl_extend("force", geometry, { noautocmd = true }))
     for name, value in pairs({
@@ -284,17 +310,17 @@ local function render(source, focused, mode)
     end
     evaluator:finish(ctx)
     local count = #rows
+    local geometry = geometry_for(rows, width, info, source)
     concealed = config.position.row + count > ctx.height
     if ctx.focused and config.avoid.cursor then
-      local row = vim.fn.winline() - 1
-      concealed = concealed or row < 0 or (row >= config.position.row and row < config.position.row + count)
+      concealed = concealed or cursor_overlaps(source, cursor, info, geometry)
     end
     if count == 0 or width == 0 or concealed then
       if entries[source] then
         close(entries[source])
       end
     else
-      paint(source, rows, width, info, ctx.focused and config.hl or config.inactive_hl)
+      paint(source, rows, width, geometry, ctx.focused and config.hl or config.inactive_hl)
     end
     return true
   end)
